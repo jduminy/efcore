@@ -7,6 +7,8 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.IO;
 using Microsoft.Data.Sqlite.Properties;
 using Microsoft.Data.Sqlite.Utilities;
 using SQLitePCL;
@@ -741,8 +743,52 @@ namespace Microsoft.Data.Sqlite
 
                 return dataTable;
             }
+            else if (string.Equals(collectionName, DbMetaDataCollectionNames.DataTypes, StringComparison.OrdinalIgnoreCase))
+            {
+                return Schema_DataTypes();
+            }
 
             throw new ArgumentException(Resources.UnknownCollection(collectionName));
+        }
+
+        private DataTable Schema_DataTypes()
+        {
+            DataTable tbl = new DataTable("DataTypes");
+
+            tbl.Locale = CultureInfo.InvariantCulture;
+            tbl.Columns.Add("TypeName", typeof(String));
+            tbl.Columns.Add("ProviderDbType", typeof(int));
+            tbl.Columns.Add("ColumnSize", typeof(long));
+            tbl.Columns.Add("CreateFormat", typeof(String));
+            tbl.Columns.Add("CreateParameters", typeof(String));
+            tbl.Columns.Add("DataType", typeof(String));
+            tbl.Columns.Add("IsAutoIncrementable", typeof(bool));
+            tbl.Columns.Add("IsBestMatch", typeof(bool));
+            tbl.Columns.Add("IsCaseSensitive", typeof(bool));
+            tbl.Columns.Add("IsFixedLength", typeof(bool));
+            tbl.Columns.Add("IsFixedPrecisionScale", typeof(bool));
+            tbl.Columns.Add("IsLong", typeof(bool));
+            tbl.Columns.Add("IsNullable", typeof(bool));
+            tbl.Columns.Add("IsSearchable", typeof(bool));
+            tbl.Columns.Add("IsSearchableWithLike", typeof(bool));
+            tbl.Columns.Add("IsLiteralSupported", typeof(bool));
+            tbl.Columns.Add("LiteralPrefix", typeof(String));
+            tbl.Columns.Add("LiteralSuffix", typeof(String));
+            tbl.Columns.Add("IsUnsigned", typeof(bool));
+            tbl.Columns.Add("MaximumScale", typeof(short));
+            tbl.Columns.Add("MinimumScale", typeof(short));
+            tbl.Columns.Add("IsConcurrencyType", typeof(bool));
+
+            tbl.BeginLoadData();
+
+            StringReader reader = new StringReader(Resources.DataTypes);
+            tbl.ReadXml(reader);
+            reader.Close();
+
+            tbl.AcceptChanges();
+            tbl.EndLoadData();
+
+            return tbl;
         }
 
         private void CreateFunctionCore<TState, TResult>(

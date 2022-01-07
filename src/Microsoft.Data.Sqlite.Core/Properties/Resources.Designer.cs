@@ -178,6 +178,12 @@ namespace Microsoft.Data.Sqlite.Properties
             => GetString("DataReaderOpen");
 
         /// <summary>
+        /// An open reader is already associated with this command. Close it before opening a new one.
+        /// </summary>
+        public static string DataTypes
+            => GetString("DataTypes");
+
+        /// <summary>
         /// An open reader is associated with this command. Close it before changing the {propertyName} property.
         /// </summary>
         public static string SetRequiresNoOpenReader(object propertyName)
