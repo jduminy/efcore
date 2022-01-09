@@ -45,6 +45,12 @@ namespace Microsoft.Data.Sqlite
         private static readonly StateChangeEventArgs _fromClosedToOpenEventArgs = new StateChangeEventArgs(ConnectionState.Closed, ConnectionState.Open);
         private static readonly StateChangeEventArgs _fromOpenToClosedEventArgs = new StateChangeEventArgs(ConnectionState.Open, ConnectionState.Closed);
 
+        private static readonly string _defaultCatalogName = "main";
+        private static readonly string _defaultMasterTableName = "sqlite_master";
+
+        private static readonly string _temporaryCatalogName = "temp";
+        private static readonly string _temporaryMasterTableName = "sqlite_temp_master";
+
         static SqliteConnection()
             => BundleInitializer.Initialize();
 
@@ -698,10 +704,15 @@ namespace Microsoft.Data.Sqlite
         /// <returns>Schema information.</returns>
         public override DataTable GetSchema(string collectionName, string?[] restrictionValues)
         {
-            if (restrictionValues is not null && restrictionValues.Length != 0)
-            {
-                throw new ArgumentException(Resources.TooManyRestrictions(collectionName));
-            }
+            //if (restrictionValues is not null && restrictionValues.Length != 0)
+            //{
+            //    throw new ArgumentException(Resources.TooManyRestrictions(collectionName));
+            //}
+
+            string[] parms = new string[5];
+
+            if (restrictionValues == null) restrictionValues = new string[0];
+            restrictionValues.CopyTo(parms, 0);
 
             if (string.Equals(collectionName, DbMetaDataCollectionNames.MetaDataCollections, StringComparison.OrdinalIgnoreCase))
             {
@@ -747,6 +758,10 @@ namespace Microsoft.Data.Sqlite
             {
                 return Schema_DataTypes();
             }
+            else if (string.Equals(collectionName, "TABLES", StringComparison.OrdinalIgnoreCase))
+            {
+                return Schema_Tables(parms[0], parms[2], parms[3]);
+            }
 
             throw new ArgumentException(Resources.UnknownCollection(collectionName));
         }
@@ -789,6 +804,88 @@ namespace Microsoft.Data.Sqlite
             tbl.EndLoadData();
 
             return tbl;
+        }
+
+        private DataTable Schema_Tables(string strCatalog, string strTable, string strType)
+        {
+            DataTable tbl = new DataTable("Tables");
+            DataRow row;
+            string strItem;
+
+            tbl.Locale = CultureInfo.InvariantCulture;
+            tbl.Columns.Add("TABLE_CATALOG", typeof(string));
+            tbl.Columns.Add("TABLE_SCHEMA", typeof(string));
+            tbl.Columns.Add("TABLE_NAME", typeof(string));
+            tbl.Columns.Add("TABLE_TYPE", typeof(string));
+            tbl.Columns.Add("TABLE_ID", typeof(long));
+            tbl.Columns.Add("TABLE_ROOTPAGE", typeof(int));
+            tbl.Columns.Add("TABLE_DEFINITION", typeof(string));
+            tbl.BeginLoadData();
+
+            if (String.IsNullOrEmpty(strCatalog)) strCatalog = GetDefaultCatalogName();
+
+            string master = GetMasterTableName(IsTemporaryCatalogName(strCatalog));
+
+            using (SqliteCommand cmd = new SqliteCommand(String.Format(CultureInfo.InvariantCulture, "SELECT [type], [name], [tbl_name], [rootpage], [sql], [rowid] FROM [{0}].[{1}] WHERE [type] LIKE 'table'", strCatalog, master), this))
+            using (SqliteDataReader rd = (SqliteDataReader)cmd.ExecuteReader())
+            {
+                while (rd.Read())
+                {
+                    strItem = rd.GetString(0);
+                    if (String.Compare(rd.GetString(2), 0, "SQLITE_", 0, 7, StringComparison.OrdinalIgnoreCase) == 0)
+                        strItem = "SYSTEM_TABLE";
+
+                    if (String.Compare(strType, strItem, StringComparison.OrdinalIgnoreCase) == 0
+                      || strType == null)
+                    {
+                        if (String.Compare(rd.GetString(2), strTable, StringComparison.OrdinalIgnoreCase) == 0
+                          || strTable == null)
+                        {
+                            row = tbl.NewRow();
+
+                            row["TABLE_CATALOG"] = strCatalog;
+                            row["TABLE_NAME"] = rd.GetString(2);
+                            row["TABLE_TYPE"] = strItem;
+                            row["TABLE_ID"] = rd.GetInt64(5);
+                            row["TABLE_ROOTPAGE"] = rd.GetInt32(3);
+                            row["TABLE_DEFINITION"] = rd.GetString(4);
+
+                            tbl.Rows.Add(row);
+                        }
+                    }
+                }
+            }
+
+            tbl.AcceptChanges();
+            tbl.EndLoadData();
+
+            return tbl;
+        }
+
+        private static string GetDefaultCatalogName()
+        {
+            return _defaultCatalogName;
+        }
+
+        private static bool IsDefaultCatalogName(string catalogName)
+        {
+            return String.Compare(catalogName, GetDefaultCatalogName(),
+                StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
+        private static string GetTemporaryCatalogName()
+        {
+            return _temporaryCatalogName;
+        }
+
+        private static bool IsTemporaryCatalogName(string catalogName)
+        {
+            return String.Compare(catalogName, GetTemporaryCatalogName(), StringComparison.OrdinalIgnoreCase) == 0;
+        }
+
+        private static string GetMasterTableName(bool temporary)
+        {
+            return temporary ? _temporaryMasterTableName : _defaultMasterTableName;
         }
 
         private void CreateFunctionCore<TState, TResult>(
